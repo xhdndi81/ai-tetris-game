@@ -1,0 +1,20 @@
+spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  devtools:
+    livereload:
+      enabled: true
+    restart:
+      enabled: true
+  web:
+    resources:
+      static-locations: classpath:/static/
+      cache:
+        period: 0
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    com.tetris.game: DEBUG

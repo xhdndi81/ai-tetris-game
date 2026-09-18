@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="data:,">
+    <title>꼬마 테트리스 - 블록을 맞춰 줄 없애기</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Gothic:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="login-container" class="container">
+        <h1>🧩 꼬마 테트리스</h1>
+        <p>친구의 이름을 알려주세요!</p>
+        <input type="text" id="username" placeholder="이름을 입력하세요" maxlength="12" autocomplete="off">
+
+        <div class="mode-section">
+            <p>난이도를 골라보세요!</p>
+            <select id="difficulty">
+                <option value="easy">🌱 쉬움 (천천히 내려와요)</option>
+                <option value="normal" selected>🌟 보통 (조금 할 줄 알아요)</option>
+                <option value="hard">🔥 어려움 (자신 있어요!)</option>
+                <option value="master">👑 마스터 (최고의 실력자!)</option>
+            </select>
+        </div>
+
+        <button id="btn-start">게임 시작하기!</button>
+
+        <div class="portal-wrap">
+            <a href="https://꼬마게임즈.온라인.한국" target="_blank" rel="noopener noreferrer" class="portal-link">
+                🎮 꼬마게임즈.온라인.한국
+            </a>
+        </div>
+
+        <div class="creator-info">
+            제작: 소희, 선우 아빠 ❤️
+        </div>
+    </div>
+
+    <div id="game-container" style="display: none;">
+        <div class="top-nav">
+            <div class="ai-chat-area">
+                <div class="ai-character">
+                    <img src="https://api.dicebear.com/7.x/bottts/svg?seed=TetrisBot" alt="테트리스 친구" id="ai-img">
+                    <div class="speech-bubble">
+                        <p id="ai-message">안녕! 나는 너의 테트리스 친구야. 블록을 맞춰 줄을 없애보자!</p>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="status-container">
+                    <p id="game-status">점수 0</p>
+                    <p id="piece-count">레벨 1 · 줄 0</p>
+                </div>
+                <div class="nav-controls">
+                    <button id="btn-music" title="음악 켜고 끄기"><span class="btn-ico">🔊</span><span class="btn-txt">음악</span></button>
+                    <button id="btn-pause" title="잠시 멈추기"><span class="btn-ico">⏸️</span><span class="btn-txt">정지</span></button>
+                    <button id="btn-new-game" title="새 게임 시작하기"><span class="btn-ico">🎮</span><span class="btn-txt">새게임</span></button>
+                    <button id="btn-history" title="내 기록 보기"><span class="btn-ico">🏆</span><span class="btn-txt">기록</span></button>
+                    <button id="btn-logout" title="나가기"><span class="btn-ico">🚪</span><span class="btn-txt">나가기</span></button>
+                </div>
+                <div class="game-creator">소희, 선우 아빠 ❤️</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <aside class="side-panel hold-panel">
+                <div class="mini-box">
+                    <h3>보관</h3>
+                    <canvas id="hold-canvas" width="120" height="120"></canvas>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">최고점</span>
+                    <strong id="best-score">0</strong>
+                </div>
+            </aside>
+
+            <div class="board-section">
+                <canvas id="tetris-board" width="300" height="600"></canvas>
+                <div id="game-overlay" class="game-overlay hidden">
+                    <p id="overlay-title">일시정지</p>
+                    <p id="overlay-text">계속하려면 버튼을 눌러주세요</p>
+                    <button id="btn-overlay-action">계속하기</button>
+                </div>
+            </div>
+
+            <aside class="side-panel next-panel">
+                <div class="mini-box">
+                    <h3>다음</h3>
+                    <canvas id="next-canvas" width="120" height="280"></canvas>
+                </div>
+            </aside>
+        </div>
+
+        <div class="touch-controls">
+            <div class="move-pad">
+                <button type="button" id="btn-rotate" class="ctrl-btn accent pad-rotate">
+                    <span class="ctrl-icon">↻</span>
+                    <span class="ctrl-label">회전</span>
+                </button>
+                <button type="button" id="btn-left" class="ctrl-btn pad-left">
+                    <span class="ctrl-icon">◀</span>
+                    <span class="ctrl-label">왼쪽</span>
+                </button>
+                <button type="button" id="btn-soft" class="ctrl-btn pad-soft">
+                    <span class="ctrl-icon">▼</span>
+                    <span class="ctrl-label">내리기</span>
+                </button>
+                <button type="button" id="btn-right" class="ctrl-btn pad-right">
+                    <span class="ctrl-icon">▶</span>
+                    <span class="ctrl-label">오른쪽</span>
+                </button>
+            </div>
+            <div class="action-pad">
+                <button type="button" id="btn-hold" class="ctrl-btn">
+                    <span class="ctrl-icon">▣</span>
+                    <span class="ctrl-label">보관</span>
+                </button>
+                <button type="button" id="btn-hard" class="ctrl-btn accent">
+                    <span class="ctrl-icon">⬇</span>
+                    <span class="ctrl-label">떨어뜨리기</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="history-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>내 테트리스 기록 🏆</h2>
+            <div id="history-table-container">
+                <table id="history-table">
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>점수</th>
+                            <th>레벨</th>
+                            <th>줄</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <audio id="bgm-play" src="/audio/bgm-play.mp3" preload="auto" loop></audio>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="/js/tetris.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

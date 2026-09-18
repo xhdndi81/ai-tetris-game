@@ -1,0 +1,20 @@
+{
+  "name": "꼬마 테트리스",
+  "short_name": "꼬마테트리스",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f8ff",
+  "theme_color": "#4a90e2",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/bottts/png?seed=TetrisBot&size=192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/bottts/png?seed=TetrisBot&size=512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
