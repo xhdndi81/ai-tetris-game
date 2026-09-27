@@ -8,7 +8,8 @@ const Tetris = (function () {
         S: '#68d391',
         Z: '#fc8181',
         J: '#63b3ed',
-        L: '#f6ad55'
+        L: '#f6ad55',
+        G: '#94a3b8'
     };
     const SHAPES = {
         I: [
@@ -82,6 +83,8 @@ const Tetris = (function () {
     let lockAcc = 0;
     let clearing = false;
     let lastMove = 0;
+    let rng = Math.random;
+    let pendingGarbage = 0;
 
     function emit(event, payload) {
         (listeners[event] || []).forEach(fn => fn(payload));
@@ -99,7 +102,7 @@ const Tetris = (function () {
     function refillBag() {
         const next = TYPES.slice();
         for (let i = next.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(rng() * (i + 1));
             [next[i], next[j]] = [next[j], next[i]];
         }
         bag = bag.concat(next);
@@ -210,11 +213,12 @@ const Tetris = (function () {
         const rows = fullRows();
         if (rows.length) {
             clearing = true;
-            emit('clear', { rows, ...snapshot() });
+            emit('clear', { ...snapshot(), clearedRows: rows });
             setTimeout(() => {
                 clearRows(rows);
                 addScore(rows.length, 0);
                 clearing = false;
+                if (flushGarbage()) return;
                 spawn();
             }, 180);
         } else {
@@ -320,8 +324,73 @@ const Tetris = (function () {
         };
     }
 
+    function setRng(seed) {
+        if (seed === undefined || seed === null || seed === '') {
+            rng = Math.random;
+            return;
+        }
+        let state = Number(seed) >>> 0;
+        rng = function () {
+            state = (state + 0x6D2B79F5) >>> 0;
+            let t = Math.imul(state ^ (state >>> 15), 1 | state);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function flushGarbage() {
+        if (!pendingGarbage || !running || gameOver) return false;
+        const count = pendingGarbage;
+        pendingGarbage = 0;
+        for (let i = 0; i < count; i++) {
+            if (board[0].some(Boolean)) {
+                running = false;
+                gameOver = true;
+                emit('gameover', snapshot());
+                return true;
+            }
+            board.shift();
+            const hole = Math.floor(Math.random() * COLS);
+            const row = Array.from({ length: COLS }, (_, x) => (x === hole ? null : 'G'));
+            board.push(row);
+        }
+        if (current) {
+            let steps = 0;
+            while (collides(current) && steps < ROWS) {
+                current.y -= 1;
+                steps += 1;
+            }
+            if (collides(current)) {
+                running = false;
+                gameOver = true;
+                emit('gameover', snapshot());
+                return true;
+            }
+        }
+        emit('garbage', { ...snapshot(), attackLines: count });
+        emit('change', snapshot());
+        return false;
+    }
+
+    function addGarbage(count) {
+        const lines = Math.max(0, Math.min(8, count | 0));
+        if (!lines || !running || gameOver) return;
+        pendingGarbage += lines;
+        if (!clearing) flushGarbage();
+    }
+
+    function finish() {
+        running = false;
+        gameOver = true;
+        paused = false;
+        pendingGarbage = 0;
+        emit('change', snapshot());
+    }
+
     function start(options) {
         difficulty = (options && options.difficulty) || 'normal';
+        setRng(options && options.seed);
+        pendingGarbage = 0;
         board = emptyBoard();
         holdType = null;
         canHold = true;
@@ -393,6 +462,8 @@ const Tetris = (function () {
         softDrop,
         hardDrop,
         hold,
+        addGarbage,
+        finish,
         tick,
         snapshot,
         colors: COLORS,

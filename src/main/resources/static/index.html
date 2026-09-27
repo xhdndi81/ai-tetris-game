@@ -9,7 +9,7 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="data:,">
     <title>꼬마 테트리스 - 블록을 맞춰 줄 없애기</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/style.css?v=4">
     <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Gothic:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -28,7 +28,10 @@
             </select>
         </div>
 
-        <button id="btn-start">게임 시작하기!</button>
+        <div class="play-choices">
+            <button type="button" id="btn-start">혼자 하기</button>
+            <button type="button" id="btn-battle" class="secondary">친구와 배틀</button>
+        </div>
 
         <div class="portal-wrap">
             <a href="https://꼬마게임즈.온라인.한국" target="_blank" rel="noopener noreferrer" class="portal-link">
@@ -41,7 +44,18 @@
         </div>
     </div>
 
-    <div id="game-container" style="display: none;">
+    <div id="waiting-rooms-container" class="container panel-hidden">
+        <h1>🧩 대기방 목록</h1>
+        <div class="room-actions">
+            <button type="button" id="btn-back-to-login" class="ghost">← 돌아가기</button>
+            <button type="button" id="btn-refresh-rooms" class="ghost">새로고침</button>
+            <button type="button" id="btn-create-room">새 방 만들기</button>
+        </div>
+        <div id="rooms-list"></div>
+        <p id="battle-status" class="battle-status"></p>
+    </div>
+
+    <div id="game-container" class="is-hidden">
         <div class="top-nav">
             <div class="ai-chat-area">
                 <div class="ai-character">
@@ -55,6 +69,7 @@
                 <div class="status-container">
                     <p id="game-status">점수 0</p>
                     <p id="piece-count">레벨 1 · 줄 0</p>
+                    <p id="battle-banner" class="battle-banner panel-hidden"></p>
                 </div>
                 <div class="nav-controls">
                     <button id="btn-music" title="음악 켜고 끄기"><span class="btn-ico">🔊</span><span class="btn-txt">음악</span></button>
@@ -150,7 +165,7 @@
 
     <audio id="bgm-play" src="/audio/bgm-play.mp3" preload="auto" loop></audio>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="/js/tetris.js"></script>
-    <script src="/js/app.js"></script>
+    <script src="/js/tetris.js?v=4"></script>
+    <script src="/js/app.js?v=4"></script>
 </body>
 </html>

@@ -16,6 +16,18 @@ const BGM_VOLUME = 0.34;
 const BGM_DUCK = 0.1;
 
 let bgm = null;
+let battle = {
+    active: false,
+    socket: null,
+    opponent: '',
+    reported: false,
+    leaving: false,
+    friendLeft: false,
+    waiting: false,
+    roomTimer: null
+};
+
+const ATTACK_LINES = [0, 1, 2, 3, 4];
 
 function requestFullscreen() {
     const elem = document.documentElement;
@@ -189,6 +201,8 @@ function drawBoard(state) {
         ctx.stroke();
     }
 
+    if (!state.board || state.board.length !== state.rows) return;
+
     for (let y = 0; y < state.rows; y++) {
         for (let x = 0; x < state.cols; x++) {
             const type = state.board[y][x];
@@ -245,7 +259,7 @@ function updateHud(state) {
 function showOverlay(title, text, actionLabel, visible) {
     $('#overlay-title').text(title);
     $('#overlay-text').text(text);
-    $('#btn-overlay-action').text(actionLabel);
+    $('#btn-overlay-action').text(actionLabel || '').toggle(Boolean(actionLabel));
     $('#game-overlay').toggleClass('hidden', !visible);
 }
 
@@ -263,14 +277,212 @@ function loop(ts) {
     rafId = requestAnimationFrame(loop);
 }
 
-function startGame() {
-    const difficulty = $('#difficulty').val();
+function startGame(options) {
+    const difficulty = (options && options.difficulty) || $('#difficulty').val();
     sizeCanvases();
-    Tetris.start({ difficulty });
+    Tetris.start({ difficulty: difficulty, seed: options && options.seed });
     showOverlay('', '', '', false);
     setIconButton('#btn-pause', '⏸️', '정지');
     playBgm();
     if (!rafId) rafId = requestAnimationFrame(loop);
+}
+
+function readName() {
+    const name = ($('#username').val() || '').trim();
+    if (!name) {
+        alert('이름을 알려주세요!');
+        return '';
+    }
+    userName = name;
+    return name;
+}
+
+function stopRoomRefresh() {
+    if (battle.roomTimer) {
+        clearInterval(battle.roomTimer);
+        battle.roomTimer = null;
+    }
+}
+
+function renderWaitingRooms(rooms) {
+    const list = $('#rooms-list').empty();
+    if (!rooms.length) {
+        list.append($('<p class="empty-rooms">').text('대기 중인 방이 없어요.'));
+        return;
+    }
+    rooms.forEach(function (room) {
+        const when = room.createdAt ? new Date(room.createdAt).toLocaleString('ko-KR', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        }) : '';
+        const card = $('<button type="button" class="room-card">');
+        card.append($('<strong>').text((room.hostName || '친구') + ' 대기 중'));
+        card.append($('<span>').text('만든 시간: ' + when));
+        card.on('click', function () { joinWaitingRoom(room.code); });
+        list.append(card);
+    });
+}
+
+function loadWaitingRooms() {
+    $.getJSON('/api/rooms/waiting')
+        .done(renderWaitingRooms)
+        .fail(function () {
+            $('#battle-status').text('대기방 목록을 불러오지 못했어요.');
+        });
+}
+
+function openWaitingRooms() {
+    stopRoomRefresh();
+    $('#login-container').hide();
+    $('#waiting-rooms-container').removeClass('panel-hidden');
+    $('#battle-status').text('');
+    loadWaitingRooms();
+    battle.roomTimer = setInterval(loadWaitingRooms, 5000);
+}
+
+function joinWaitingRoom(code) {
+    $('#battle-status').text('들어가는 중...');
+    connectBattle().then(function () {
+        sendBattle({ type: 'join', name: userName, code: code });
+    }).catch(function () {
+        $('#battle-status').text('배틀 연결에 실패했어요.');
+    });
+}
+
+function showHostLobby() {
+    battle.waiting = true;
+    stopRoomRefresh();
+    $('#login-container').hide();
+    $('#waiting-rooms-container').addClass('panel-hidden');
+    $('#game-container').removeClass('is-hidden');
+    requestFullscreen();
+    sizeCanvases();
+    showOverlay('대기 중', '친구가 들어올 때까지 기다려 주세요.', '', true);
+    setMessage('방을 만들었어요! 친구가 들어올 때까지 기다려 주세요.', true);
+}
+
+function setBattleBanner() {
+    const banner = $('#battle-banner');
+    if (battle.active && battle.opponent) {
+        banner.text('VS ' + battle.opponent).removeClass('panel-hidden');
+    } else {
+        banner.text('').addClass('panel-hidden');
+    }
+}
+
+function sendBattle(message) {
+    if (battle.socket && battle.socket.readyState === WebSocket.OPEN) {
+        battle.socket.send(JSON.stringify(message));
+    }
+}
+
+function closeBattle() {
+    battle.leaving = true;
+    battle.active = false;
+    battle.opponent = '';
+    battle.reported = false;
+    battle.friendLeft = false;
+    battle.waiting = false;
+    stopRoomRefresh();
+    if (battle.socket) {
+        battle.socket.close();
+        battle.socket = null;
+    }
+    setBattleBanner();
+}
+
+function enterBattleGame(message) {
+    battle.active = true;
+    battle.opponent = message.opponent || '친구';
+    battle.reported = false;
+    battle.friendLeft = false;
+    battle.waiting = false;
+    stopRoomRefresh();
+    $('#waiting-rooms-container').addClass('panel-hidden');
+    $('#login-container').hide();
+    $('#game-container').removeClass('is-hidden');
+    setBattleBanner();
+    requestFullscreen();
+    startGame({ difficulty: message.difficulty, seed: message.seed });
+    setMessage(battle.opponent + '와 배틀 시작! 줄을 없애서 방해해 보자!', true);
+}
+
+function onBattleMessage(event) {
+    let message;
+    try {
+        message = JSON.parse(event.data);
+    } catch (e) {
+        return;
+    }
+    if (message.type === 'waiting') {
+        showHostLobby();
+        return;
+    }
+    if (message.type === 'error') {
+        $('#battle-status').text(message.message || '다시 시도해 주세요.');
+        if ($('#waiting-rooms-container').is(':visible')) loadWaitingRooms();
+        return;
+    }
+    if (message.type === 'start') {
+        enterBattleGame(message);
+        return;
+    }
+    if (message.type === 'attack') {
+        Tetris.addGarbage(message.lines);
+        return;
+    }
+    if (message.type === 'win') {
+        if (battle.reported) return;
+        battle.reported = true;
+        Tetris.finish();
+        const left = message.reason === 'leave';
+        battle.friendLeft = left;
+        showOverlay(
+            '이겼다!',
+            left ? '친구가 나갔어요.' : battle.opponent + '의 칸이 꽉 찼어!',
+            left ? '나가기' : '한 판 더',
+            true
+        );
+        pauseBgm();
+        setMessage(left ? '친구가 나갔어. 네가 이겼어!' : '이겼어! 정말 대단해!', true);
+        return;
+    }
+    if (message.type === 'rematchAsk') {
+        setMessage(battle.opponent + '가 한 판 더 하자고 해요!', true);
+        return;
+    }
+    if (message.type === 'rematchWait') {
+        setMessage('친구가 준비되면 다시 시작해요.', false);
+    }
+}
+
+function connectBattle() {
+    return new Promise((resolve, reject) => {
+        if (battle.socket && battle.socket.readyState === WebSocket.OPEN) {
+            resolve(battle.socket);
+            return;
+        }
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(proto + '//' + location.host + '/ws/battle');
+        battle.socket = socket;
+        socket.onopen = function () { resolve(socket); };
+        socket.onerror = function () { reject(); };
+        socket.onmessage = onBattleMessage;
+        socket.onclose = function () {
+            battle.socket = null;
+            const leaving = battle.leaving;
+            battle.leaving = false;
+            if (leaving) return;
+            if ($('#waiting-rooms-container').is(':visible') || battle.waiting) {
+                $('#battle-status').text('연결이 끊어졌어요. 다시 시도해 주세요.');
+                if (battle.waiting) setMessage('연결이 끊어졌어요.', true);
+            } else if (battle.active) {
+                setMessage('연결이 끊어졌어요.', true);
+            }
+        };
+    });
 }
 
 function today() {
@@ -311,18 +523,31 @@ $(function () {
     renderBest();
 
     Tetris.on('start', state => {
-        setMessage(userName + '야, 준비됐지? 블록을 예쁘게 맞춰보자!', true);
+        if (!battle.active) {
+            setMessage(userName + '야, 준비됐지? 블록을 예쁘게 맞춰보자!', true);
+        }
         render(state);
     });
 
     Tetris.on('clear', payload => {
+        const cleared = (payload.clearedRows || []).length;
         const messages = {
             1: userName + ', 한 줄 완성! 잘했어!',
             2: '두 줄이야! 정말 멋져!',
             3: '세 줄이나 없앴어! 대단해!',
             4: '테트리스!!! ' + userName + ', 최고야!'
         };
-        setMessage(messages[payload.rows.length] || '줄을 없앴어!', true);
+        const attack = battle.active ? (ATTACK_LINES[cleared] || 0) : 0;
+        if (attack) {
+            sendBattle({ type: 'attack', lines: attack });
+            setMessage((messages[cleared] || '줄을 없앴어!') + ' 상대에게 ' + attack + '줄을 보냈어!', true);
+        } else {
+            setMessage(messages[cleared] || '줄을 없앴어!', true);
+        }
+    });
+
+    Tetris.on('garbage', payload => {
+        setMessage(battle.opponent + '가 ' + payload.attackLines + '줄을 보냈어! 구멍을 노려봐!', true);
     });
 
     Tetris.on('levelup', state => {
@@ -350,23 +575,53 @@ $(function () {
             level: state.level,
             lines: state.lines
         });
-        showOverlay('게임 종료', userName + '의 점수는 ' + state.score.toLocaleString() + '점이야!', '다시 하기', true);
         setIconButton('#btn-pause', '⏸️', '정지');
         pauseBgm();
+        if (battle.active) {
+            if (!battle.reported) {
+                battle.reported = true;
+                sendBattle({ type: 'lose' });
+            }
+            showOverlay('아쉽다!', battle.opponent + '가 이겼어. 한 판 더 해볼까?', '한 판 더', true);
+            setMessage('아쉽지만 정말 잘했어. 한 판 더 해볼까?', true);
+            return;
+        }
+        showOverlay('게임 종료', userName + '의 점수는 ' + state.score.toLocaleString() + '점이야!', '다시 하기', true);
         setMessage('아쉽지만 정말 잘했어. 한 판 더 해볼까?', true);
     });
 
     $('#btn-start').on('click', function () {
-        const name = ($('#username').val() || '').trim();
-        if (!name) {
-            alert('이름을 알려주세요!');
-            return;
-        }
-        userName = name;
+        if (!readName()) return;
+        closeBattle();
         $('#login-container').hide();
-        $('#game-container').css('display', 'flex');
+        $('#game-container').removeClass('is-hidden');
         requestFullscreen();
         startGame();
+    });
+
+    $('#btn-battle').on('click', function () {
+        if (!readName()) return;
+        openWaitingRooms();
+    });
+
+    $('#btn-back-to-login').on('click', function () {
+        stopRoomRefresh();
+        closeBattle();
+        $('#waiting-rooms-container').addClass('panel-hidden');
+        $('#login-container').show();
+    });
+
+    $('#btn-refresh-rooms').on('click', function () {
+        loadWaitingRooms();
+    });
+
+    $('#btn-create-room').on('click', function () {
+        $('#battle-status').text('방을 만드는 중...');
+        connectBattle().then(function () {
+            sendBattle({ type: 'create', name: userName, difficulty: $('#difficulty').val() });
+        }).catch(function () {
+            $('#battle-status').text('배틀 연결에 실패했어요.');
+        });
     });
 
     $('#username').on('keydown', function (event) {
@@ -374,6 +629,14 @@ $(function () {
     });
 
     $('#btn-pause').on('click', function () {
+        if (battle.waiting) {
+            setMessage('친구가 들어올 때까지 기다려 주세요.', false);
+            return;
+        }
+        if (battle.active) {
+            setMessage('배틀 중에는 잠깐 멈출 수 없어요.', false);
+            return;
+        }
         const state = Tetris.snapshot();
         if (state.gameOver) return;
         Tetris.togglePause();
@@ -381,6 +644,19 @@ $(function () {
 
     $('#btn-new-game, #btn-overlay-action').on('click', function () {
         const state = Tetris.snapshot();
+        if (battle.waiting) {
+            setMessage('친구가 들어올 때까지 기다려 주세요.', false);
+            return;
+        }
+        if (battle.active) {
+            if (battle.friendLeft) {
+                $('#btn-logout').click();
+                return;
+            }
+            sendBattle({ type: 'rematch' });
+            setMessage('친구가 준비되면 다시 시작해요.', false);
+            return;
+        }
         if (state.paused && !state.gameOver && this.id === 'btn-overlay-action') {
             Tetris.resume();
             return;
@@ -391,7 +667,9 @@ $(function () {
     $('#btn-logout').on('click', function () {
         Tetris.pause();
         stopBgm();
-        $('#game-container').hide();
+        closeBattle();
+        $('#waiting-rooms-container').addClass('panel-hidden');
+        $('#game-container').addClass('is-hidden');
         $('#login-container').show();
         showOverlay('', '', '', false);
     });
@@ -432,6 +710,7 @@ $(function () {
         if (event.key === ' ') Tetris.hardDrop();
         if (event.key === 'c' || event.key === 'C') Tetris.hold();
         if (event.key === 'p' || event.key === 'P' || event.key === 'Escape') {
+            if (battle.active || battle.waiting) return;
             const state = Tetris.snapshot();
             if (!state.gameOver) Tetris.togglePause();
         }
